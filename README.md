@@ -7,7 +7,7 @@
 1. **手写 SSE 流式输出** — `fetch + ReadableStream` 增量读取，含**粘包/半包处理**、`AbortController` 中止（`client/src/services/sse.ts`）
 2. **RAG 知识检索** — 本地 md 知识库 → 分块 → 向量化 → Top-K 检索 → 注入 Prompt，AI 能回答私有知识（`server/rag.js`）
 3. **Function Calling 工具调用** — AI 可调用 `search_knowledge` / `get_current_time` 两个工具，展示 **Agent 闭环**（`client/src/services/tools.ts` + `useChat.ts`）
-4. **手写防抖 / rAF 节流** — 草稿自动保存防抖（停止输入 1s 存 localStorage、刷新恢复）+ 流式渲染 rAF 节流（合并高频 setState），零依赖（`client/src/utils/asyncUtils.ts`）
+4. **手写防抖 / rAF 节流** — 输入联想防抖（停止输入 300ms 后 RAG 搜索知识库显示建议）+ 流式渲染 rAF 节流（合并高频 setState），零依赖（`client/src/utils/asyncUtils.ts`）
 
 ## 🏗 架构
 
@@ -91,9 +91,9 @@ TeamHub-AI/
 | Function Calling 原理？ | LLM 只输出结构化工具参数（不执行）→ 应用层执行 → 结果回填 → 再生成 |
 | MCP 和你的工具调用啥关系？ | MCP 是把工具调用标准化的协议（JSON-RPC）；我这是直接函数调用，MCP = 标准化版 |
 | 上下文太长怎么办？ | 滑动窗口保留最近 8 条（★ 注释标注）|
-| 防抖和节流区别？ | 防抖只执行最后一次（连续触发重置计时）；节流固定间隔最多一次（rAF 合并到帧）。草稿自动保存防抖，流式渲染节流合并 setState |
+| 防抖和节流区别？ | 防抖只执行最后一次（连续触发重置计时）；节流固定间隔最多一次（rAF 合并到帧）。输入联想防抖，流式渲染节流合并 setState |
 | 为什么流式渲染用 rAF 节流？ | SSE 高频回调，每 chunk 一次 setState 会高频重渲染；rAF 与浏览器渲染节奏同步，帧内合并为一次渲染（面经 105）|
-| 为什么草稿保存用防抖不用节流？ | 草稿语义是"以最后输入为准"——用户停下来才算写完；防抖在停止输入 1s 后保存，避免每个按键都写 localStorage |
+| 为什么联想搜索用防抖不用节流？ | 联想语义是"停下来才算想好"——防抖在停止输入 300ms 后搜索，避免每个按键都请求后端；且配合请求序列号丢弃过期响应（竞态处理）|
 
 ## 🎯 诚实分层（面试防穿帮）
 
