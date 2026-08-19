@@ -6,6 +6,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { ChatMessage, UiMessage } from '../types';
 import { streamChat } from '../services/sse';
 import { tools, executeTool } from '../services/tools';
+import { throttleRaf } from '../utils/asyncUtils';
 
 const MAX_TOOL_ROUNDS = 2; // ★ 防死循环: 工具循环最多 2 轮
 const WINDOW_SIZE = 8; // ★ 滑动窗口: 只保留最近 8 条消息, 防止 token 爆炸
@@ -135,21 +136,44 @@ export function useChat() {
         setThinking(false);
 
         // ============ 第二阶段: 流式输出最终回答 ============
+        // ★ 流式渲染节流: SSE 高频 onChunk 用 rAF 合并, 每帧(16.7ms)只 setState 一次,
+        // 避免每收到一小块就触发一次 React 重渲染 (面经 105: 高频流式返回的渲染性能)
+        let pendingContent = '';
+        const flushChunk = throttleRaf(() => {
+          const content = pendingContent;
+          pendingContent = '';
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === aiId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = { ...next[idx], content: (next[idx].content ?? '') + content };
+            return next;
+          });
+        });
         await streamChat(
           msgs,
           undefined, // 最终回答不带 tools, 避免再触发工具
           {
             onChunk: (delta) => {
-              // ★ 函数式更新: 用 prev 而非闭包 messages, 避免流式期间状态过期
-              setMessages((prev) => {
-                const idx = prev.findIndex((m) => m.id === aiId);
-                if (idx === -1) return prev;
-                const next = [...prev];
-                next[idx] = { ...next[idx], content: (next[idx].content ?? '') + delta };
-                return next;
-              });
+              // 先累积到 pending, 下一帧统一 flush (rAF 节流)
+              pendingContent += delta;
+              flushChunk();
             },
-            onDone: () => setStreaming(false),
+            onDone: () => {
+              // 流结束: 强制 flush 剩余 pending (rAF 节流可能还没来得及渲染最后一块)
+              const rest = pendingContent;
+              pendingContent = '';
+              if (rest) {
+                setMessages((prev) => {
+                  const idx = prev.findIndex((m) => m.id === aiId);
+                  if (idx === -1) return prev;
+                  const next = [...prev];
+                  next[idx] = { ...next[idx], content: (next[idx].content ?? '') + rest };
+                  return next;
+                });
+              }
+              setStreaming(false);
+            },
             onError: (err) => {
               setStreaming(false);
               setError(`响应中断: ${err.message}（已保留已输出内容）`);
