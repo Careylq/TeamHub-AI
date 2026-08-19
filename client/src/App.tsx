@@ -4,7 +4,7 @@
 
 import { Layout, Typography, Spin, Badge } from 'antd';
 import { RobotOutlined } from '@ant-design/icons';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useChat } from './hooks/useChat';
 import ChatWindow from './components/ChatWindow';
 import ChatInput from './components/ChatInput';
@@ -20,6 +20,11 @@ export default function App() {
   // 防止连按导致重复请求浪费 token (防抖 = 只执行最后一次)
   // 注: retry(重试) 直接调 send 不受防抖影响, 重试应立即执行
   const sendDebounced = useMemo(() => debounce(send, 300), [send]);
+
+  // ★ 组件卸载时取消未执行的防抖调用, 清理 timer 防止内存泄漏
+  useEffect(() => {
+    return () => sendDebounced.cancel();
+  }, [sendDebounced]);
 
   return (
     <Layout style={{ height: '100vh' }}>
