@@ -4,27 +4,15 @@
 
 import { Layout, Typography, Spin, Badge } from 'antd';
 import { RobotOutlined } from '@ant-design/icons';
-import { useEffect, useMemo } from 'react';
 import { useChat } from './hooks/useChat';
 import ChatWindow from './components/ChatWindow';
 import ChatInput from './components/ChatInput';
 import ErrorBanner from './components/ErrorBanner';
-import { debounce } from './utils/asyncUtils';
 
 const { Header, Content } = Layout;
 
 export default function App() {
   const { messages, streaming, thinking, error, send, stop, retry } = useChat();
-
-  // ★ 发送防抖: 用户快速连按 Enter/连点发送时, 300ms 内只响应最后一次,
-  // 防止连按导致重复请求浪费 token (防抖 = 只执行最后一次)
-  // 注: retry(重试) 直接调 send 不受防抖影响, 重试应立即执行
-  const sendDebounced = useMemo(() => debounce(send, 300), [send]);
-
-  // ★ 组件卸载时取消未执行的防抖调用, 清理 timer 防止内存泄漏
-  useEffect(() => {
-    return () => sendDebounced.cancel();
-  }, [sendDebounced]);
 
   return (
     <Layout style={{ height: '100vh' }}>
@@ -68,7 +56,7 @@ export default function App() {
             </div>
           )}
         </div>
-        <ChatInput streaming={streaming} onSend={sendDebounced} onStop={stop} />
+        <ChatInput streaming={streaming} onSend={send} onStop={stop} />
       </Content>
     </Layout>
   );
